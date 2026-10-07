@@ -1,0 +1,271 @@
+using LibreriaAtenas.Application.DTOs.Libros;
+using LibreriaAtenas.Infrastructure.Services;
+using LibreriaAtenas.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace LibreriaAtenas.Tests.Services;
+
+public class LibroServiceTests
+{
+    private static LibreriaDbContext CreateDb() =>
+        new(new DbContextOptionsBuilder<LibreriaDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+
+    private static LibroService CreateService(LibreriaDbContext db) => new(db);
+
+    private static CrearLibroRequest BuildRequest(string isbn = "978-0-306-40615-7") =>
+        new(isbn, "El libro de prueba", "Autor Prueba", "Editorial Prueba", 250m, 100m);
+
+    // ── CrearAsync ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CrearAsync_WithValidData_ReturnsLibroDto()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        var result = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+
+        Assert.NotNull(result);
+        Assert.Equal("978-0-306-40615-7", result.ISBN);
+        Assert.Equal("El libro de prueba", result.Titulo);
+        Assert.True(result.IsActive);
+        Assert.NotEqual(Guid.Empty, result.Id);
+    }
+
+    [Fact]
+    public async Task CrearAsync_WithDuplicateISBN_ThrowsInvalidOperation()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            svc.CrearAsync(BuildRequest(), Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task CrearAsync_CreatesInventarioWithZeroExistencia()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        var result = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+
+        Assert.Equal(0, result.Existencia);
+    }
+
+    // ── GetByIdAsync ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetByIdAsync_WithNonExistentId_ReturnsNull()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        var result = await svc.GetByIdAsync(Guid.NewGuid());
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_WithExistingId_ReturnsLibroDto()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var creado = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+
+        var result = await svc.GetByIdAsync(creado.Id);
+
+        Assert.NotNull(result);
+        Assert.Equal(creado.Id, result.Id);
+        Assert.Equal(creado.ISBN, result.ISBN);
+    }
+
+    // ── GetByIsbnAsync ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetByIsbnAsync_WithNonExistentISBN_ReturnsNull()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        var result = await svc.GetByIsbnAsync("000-000-000");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetByIsbnAsync_WithExistingISBN_ReturnsLibroDto()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        await svc.CrearAsync(BuildRequest("978-111"), Guid.NewGuid());
+
+        var result = await svc.GetByIsbnAsync("978-111");
+
+        Assert.NotNull(result);
+        Assert.Equal("978-111", result.ISBN);
+    }
+
+    // ── DesactivarAsync / ActivarAsync ────────────────────────────────────────
+
+    [Fact]
+    public async Task DesactivarAsync_WithNonExistentId_ThrowsKeyNotFound()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            svc.DesactivarAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task DesactivarAsync_SetsIsActiveToFalse()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+
+        await svc.DesactivarAsync(libro.Id);
+        var result = await svc.GetByIdAsync(libro.Id);
+
+        Assert.NotNull(result);
+        Assert.False(result.IsActive);
+    }
+
+    [Fact]
+    public async Task ActivarAsync_WithNonExistentId_ThrowsKeyNotFound()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            svc.ActivarAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task ActivarAsync_SetsIsActiveToTrue()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+        await svc.DesactivarAsync(libro.Id);
+
+        await svc.ActivarAsync(libro.Id);
+        var result = await svc.GetByIdAsync(libro.Id);
+
+        Assert.NotNull(result);
+        Assert.True(result.IsActive);
+    }
+
+    // ── ActualizarInventarioAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task ActualizarInventarioAsync_WithNonExistentId_ThrowsKeyNotFound()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            svc.ActualizarInventarioAsync(Guid.NewGuid(), new ActualizarInventarioRequest(10)));
+    }
+
+    [Fact]
+    public async Task ActualizarInventarioAsync_UpdatesExistencia()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+
+        await svc.ActualizarInventarioAsync(libro.Id, new ActualizarInventarioRequest(25));
+        var result = await svc.GetByIdAsync(libro.Id);
+
+        Assert.NotNull(result);
+        Assert.Equal(25, result.Existencia);
+    }
+
+    // ── BuscarAsync ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task BuscarAsync_WithNoBooks_ReturnsEmptyPage()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        var result = await svc.BuscarAsync(null, 1, 10);
+
+        Assert.Equal(0, result.Total);
+        Assert.Empty(result.Items);
+    }
+
+    [Fact]
+    public async Task BuscarAsync_WithMatchingSearchTerm_ReturnsFiltered()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        await svc.CrearAsync(BuildRequest("111"), Guid.NewGuid());
+        await svc.CrearAsync(
+            new CrearLibroRequest("222", "Java Programming", "Author", "Editorial", 100m, 50m),
+            Guid.NewGuid());
+
+        var result = await svc.BuscarAsync("java", 1, 10);
+
+        Assert.Equal(1, result.Total);
+        Assert.Single(result.Items);
+        Assert.Equal("Java Programming", result.Items[0].Titulo);
+    }
+
+    [Fact]
+    public async Task BuscarAsync_FiltersByIsActive()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+        await svc.DesactivarAsync(libro.Id);
+
+        var activos = await svc.BuscarAsync(null, 1, 10, isActive: true);
+        var inactivos = await svc.BuscarAsync(null, 1, 10, isActive: false);
+
+        Assert.Equal(0, activos.Total);
+        Assert.Equal(1, inactivos.Total);
+    }
+
+    [Fact]
+    public async Task BuscarAsync_WithSoloConExistencia_ExcludesZeroStock()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro1 = await svc.CrearAsync(BuildRequest("111"), Guid.NewGuid());
+        var libro2 = await svc.CrearAsync(BuildRequest("222"), Guid.NewGuid());
+        await svc.ActualizarInventarioAsync(libro1.Id, new ActualizarInventarioRequest(5));
+
+        var result = await svc.BuscarAsync(null, 1, 10, soloConExistencia: true);
+
+        Assert.Equal(1, result.Total);
+        Assert.Equal("111", result.Items[0].ISBN);
+        _ = libro2;
+    }
+
+    // ── DesactivarAgotadosAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DesactivarAgotadosAsync_DeactivatesOnlyZeroStockBooks()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var agotado = await svc.CrearAsync(BuildRequest("000"), Guid.NewGuid());
+        var conExistencia = await svc.CrearAsync(BuildRequest("111"), Guid.NewGuid());
+        await svc.ActualizarInventarioAsync(conExistencia.Id, new ActualizarInventarioRequest(3));
+
+        var result = await svc.DesactivarAgotadosAsync();
+
+        Assert.Equal(1, result.Afectados);
+        var agotadoDb = await svc.GetByIdAsync(agotado.Id);
+        var activoDb = await svc.GetByIdAsync(conExistencia.Id);
+        Assert.False(agotadoDb!.IsActive);
+        Assert.True(activoDb!.IsActive);
+    }
+}
