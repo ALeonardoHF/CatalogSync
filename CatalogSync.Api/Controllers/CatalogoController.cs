@@ -61,16 +61,11 @@ public class CatalogoController : ControllerBase
             ? hojaValues.Select(v => string.IsNullOrWhiteSpace(v) ? null : v).ToList()
             : new List<string?>();
 
-        byte[] existenciasBytes;
-        using (var ms = new MemoryStream())
-        {
-            await existencias.CopyToAsync(ms);
-            existenciasBytes = ms.ToArray();
-        }
+        CatalogoLeido catalogoLeido;
+        using (var stream = existencias.OpenReadStream())
+            catalogoLeido = await _excelService.LeerExistenciasAsync(stream, existenciasHoja);
 
-        List<LibroExistencia> catalogo;
-        using (var stream = new MemoryStream(existenciasBytes))
-            catalogo = await _excelService.LeerExistenciasAsync(stream, existenciasHoja);
+        var catalogo = catalogoLeido.Libros;
 
         var librosEntrada = new List<LibroProveedor>();
         for (int i = 0; i < entradasFiles.Count; i++)
@@ -86,11 +81,8 @@ public class CatalogoController : ControllerBase
 
         var resumen = _catalogoService.ProcesarCatalogo(catalogo, librosEntrada, estrategiaPrecio);
 
-        using (var streamOriginal = new MemoryStream(existenciasBytes))
-        {
-            var excelBytes = await _excelService.GenerarExcelActualizadoAsync(catalogo, streamOriginal, existenciasHoja);
-            resumen.ArchivoId = _archivoTemporal.Guardar(excelBytes);
-        }
+        var excelBytes = await _excelService.GenerarExcelActualizadoAsync(catalogo, catalogoLeido.Encabezados);
+        resumen.ArchivoId = _archivoTemporal.Guardar(excelBytes);
 
         return Ok(resumen);
     }
@@ -123,16 +115,9 @@ public class CatalogoController : ControllerBase
             ? hojaValues.Select(v => string.IsNullOrWhiteSpace(v) ? null : v).ToList()
             : new List<string?>();
 
-        byte[] existenciasBytes;
-        using (var ms = new MemoryStream())
-        {
-            await existencias.CopyToAsync(ms);
-            existenciasBytes = ms.ToArray();
-        }
-
         List<LibroExistencia> catalogo;
-        using (var stream = new MemoryStream(existenciasBytes))
-            catalogo = await _excelService.LeerExistenciasAsync(stream, existenciasHoja);
+        using (var stream = existencias.OpenReadStream())
+            catalogo = (await _excelService.LeerExistenciasAsync(stream, existenciasHoja)).Libros;
 
         var librosEntrada = new List<LibroProveedor>();
         for (int i = 0; i < entradasFiles.Count; i++)

@@ -14,10 +14,14 @@ public class ExcelService : IExcelService
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     }
 
-    public async Task<List<LibroExistencia>> LeerExistenciasAsync(Stream stream, string? hoja = null)
+    public async Task<CatalogoLeido> LeerExistenciasAsync(Stream stream, string? hoja = null)
     {
         var lista = new List<LibroExistencia>();
         var table = LeerTabla(stream, hoja);
+
+        var encabezados = table.Rows.Count > 0
+            ? table.Rows[0].ItemArray.Select(c => c?.ToString() ?? "").ToArray()
+            : [];
 
         for (int i = 1; i < table.Rows.Count; i++)
         {
@@ -47,7 +51,7 @@ public class ExcelService : IExcelService
             });
         }
 
-        return await Task.FromResult(lista);
+        return await Task.FromResult(new CatalogoLeido(lista, encabezados));
     }
 
     public async Task<List<LibroProveedor>> LeerProveedorAsync(Stream stream, string nombreProveedor, string? hoja = null)
@@ -104,57 +108,72 @@ public class ExcelService : IExcelService
         return await Task.FromResult(lista);
     }
 
-    public async Task<byte[]> GenerarExcelActualizadoAsync(List<LibroExistencia> catalogo, Stream streamOriginal, string? hoja = null)
+    public async Task<byte[]> GenerarExcelActualizadoAsync(List<LibroExistencia> catalogo, string[] encabezados)
     {
-        var tableOriginal = LeerTabla(streamOriginal, hoja);
-
+        // Una sola fuente de verdad: el catalogo ya parseado. No se vuelve a
+        // abrir ni reparsear el archivo original — ya se leyo una vez en
+        // LeerExistenciasAsync, y todo lo que necesitamos para reconstruir
+        // cada fila ya vive en LibroExistencia.
         using var package = new ExcelPackage();
         var ws = package.Workbook.Worksheets.Add("Existencias");
 
-        if (tableOriginal.Rows.Count > 0)
+        for (int col = 0; col < encabezados.Length; col++)
+            ws.Cells[1, col + 1].Value = encabezados[col];
+
+        var existentes = catalogo.Where(l => l.FilaOriginal > 0)
+                                  .OrderBy(l => l.FilaOriginal)
+                                  .ToList();
+        var nuevos = catalogo.Where(l => l.FilaOriginal == 0).ToList();
+
+        // Escritura en bloque: una sola llamada en vez de miles de accesos
+        // individuales a ws.Cells[fila, columna] (el cuello de botella real
+        // en archivos de decenas de miles de filas).
+        if (existentes.Count > 0)
         {
-            var headerRow = tableOriginal.Rows[0];
-            for (int col = 0; col < tableOriginal.Columns.Count; col++)
-                ws.Cells[1, col + 1].Value = headerRow[col]?.ToString() ?? "";
+            var filas = existentes.Select(ToFila).ToArray();
+            ws.Cells[2, 1].LoadFromArrays(filas);
         }
 
-        var porFila = catalogo.Where(l => l.FilaOriginal > 0).ToDictionary(l => l.FilaOriginal);
-
-        for (int i = 1; i < tableOriginal.Rows.Count; i++)
-        {
-            var row = tableOriginal.Rows[i];
-            int excelRow = i + 1;
-            for (int col = 0; col < tableOriginal.Columns.Count; col++)
-                ws.Cells[excelRow, col + 1].Value = row[col];
-
-            if (porFila.TryGetValue(excelRow, out var libro))
-                ws.Cells[excelRow, 8].Value = (double)libro.Precio;
-        }
-
-        int lastRow = tableOriginal.Rows.Count;
-        foreach (var libro in catalogo.Where(l => l.FilaOriginal == 0))
+        int lastRow = 1 + existentes.Count;
+        foreach (var libro in nuevos)
         {
             lastRow++;
-            ws.Cells[lastRow, 1].Value = libro.ISBNOriginal;
-            ws.Cells[lastRow, 2].Value = libro.Titulo;
-            ws.Cells[lastRow, 3].Value = libro.Autor;
-            ws.Cells[lastRow, 4].Value = libro.Descuento;
-            
-            ws.Cells[lastRow, 5].Value = string.IsNullOrWhiteSpace(libro.Sello)
-                ? libro.Editorial
-                : $"{libro.Editorial} ({libro.Sello})";
-
-            ws.Cells[lastRow, 6].Value = libro.Costo;
-            ws.Cells[lastRow, 7].Value = libro.Inc;
-            ws.Cells[lastRow, 8].Value = (double)libro.Precio;
-            ws.Cells[lastRow, 9].Value = libro.FechaEntrada;
-            ws.Cells[lastRow, 10].Value = libro.CodigoBarra;
-            ws.Cells[lastRow, 11].Value = libro.Existencia;
-            ws.Cells[lastRow, 12].Value = libro.Ventas;
+            var valores = ToFila(libro);
+            for (int col = 0; col < valores.Length; col++)
+                ws.Cells[lastRow, col + 1].Value = valores[col];
         }
 
         return await package.GetAsByteArrayAsync();
     }
+
+    private static object[] ToFila(LibroExistencia libro) =>
+    [
+        libro.ISBNOriginal,
+        libro.Titulo,
+        libro.Autor,
+        ParseNumeroOTexto(libro.Descuento),
+        string.IsNullOrWhiteSpace(libro.Sello) ? libro.Editorial : $"{libro.Editorial} ({libro.Sello})",
+        ParseNumeroOTexto(libro.Costo),
+        ParseNumeroOTexto(libro.Inc),
+        (double)libro.Precio,
+        libro.FechaEntrada,
+        libro.CodigoBarra,
+        ParseNumeroOTexto(libro.Existencia),
+        ParseNumeroOTexto(libro.Ventas)
+    ];
+
+    /// <summary>
+    /// Los campos que el catalogo guarda como texto (Costo, Existencia,
+    /// Ventas, etc.) suelen ser numericos en el Excel original. Si se
+    /// escriben como string, Excel los trata como texto (alineados a la
+    /// izquierda, sin poder sumarlos ni filtrarlos como numero). Esto
+    /// intenta devolver el numero real; si no es numerico, deja el texto.
+    /// </summary>
+    private static object ParseNumeroOTexto(string valor) =>
+        decimal.TryParse(valor, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var numero)
+            ? (double)numero
+            : valor;
 
     // ── Format detection ──────────────────────────────────────────────────────
 
@@ -277,7 +296,15 @@ public class ExcelService : IExcelService
     private static string GetString(object? cell)
     {
         if (cell == null || cell is DBNull) return "";
-        if (cell is double d) return ((long)d).ToString();
+
+        // Los enteros se devuelven sin ".0" (p.ej. existencia, codigo de
+        // barras), pero un valor fraccionario (p.ej. un factor de
+        // incremento "1.16") no se trunca — antes se perdia con (long)d.
+        if (cell is double d)
+            return d == Math.Floor(d) && !double.IsInfinity(d)
+                ? ((long)d).ToString()
+                : d.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
         return cell.ToString()?.Trim() ?? "";
     }
 
