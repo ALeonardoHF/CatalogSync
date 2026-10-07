@@ -20,7 +20,7 @@ appsettings.Staging.json
 secrets.json
 
 # Uploads (user content, not source code)
-LibreriaAtenas.Api/wwwroot/uploads/
+CatalogSync.Api/wwwroot/uploads/
 
 # OS
 .DS_Store

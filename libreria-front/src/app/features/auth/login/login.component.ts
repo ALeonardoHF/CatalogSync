@@ -16,7 +16,7 @@ type Tab = 'login' | 'register';
         <div class="brand">
           <div class="brand-icon">📚</div>
           <div>
-            <div class="brand-name">Librería Atenas</div>
+            <div class="brand-name">CatalogSync</div>
             <div class="brand-sub">Sistema de gestión</div>
           </div>
         </div>

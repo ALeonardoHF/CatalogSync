@@ -125,13 +125,13 @@ y 3-4 servicios/directivas. **No usamos auth-front como base**, son apps separad
 ## 5. Arquitectura
 
 ```
-LibreriaAtenas/
+CatalogSync/
 ├── PLAN.md                          ← este archivo
 ├── existencias.xls                  ← datos de prueba
 ├── OCEANO.xls
 ├── PLANETA CONSIGNACION.xls
 │
-├── LibreriaAtenas.Api/              ← ASP.NET Core Web API
+├── CatalogSync.Api/              ← ASP.NET Core Web API
 │   ├── Controllers/
 │   │   └── CatalogoController.cs
 │   ├── Models/
@@ -328,7 +328,7 @@ Descarga el Excel procesado.
 ## 9. Plan de Implementación
 
 ### Fase 1 — Backend (API)
-- [ ] Crear proyecto `LibreriaAtenas.Api` (Web API .NET 9)
+- [ ] Crear proyecto `CatalogSync.Api` (Web API .NET 9)
 - [ ] Agregar EPPlus (NuGet)
 - [ ] Configurar CORS para Angular (localhost:4200)
 - [ ] `ExcelService` — leer existencias.xls

@@ -8,7 +8,7 @@ import { AuthService } from '../../../core/services/auth.service';
   imports: [RouterLink, RouterLinkActive],
   template: `
     <nav class="navbar">
-      <a class="brand" routerLink="/tienda/catalogo">📚 Librería Atenas</a>
+      <a class="brand" routerLink="/tienda/catalogo">📚 CatalogSync</a>
 
       <div class="links">
         @if (auth.isRole('Admin')) {
