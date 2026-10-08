@@ -109,9 +109,9 @@ interface UsuarioRow {
               <div class="field">
                 <label>Rol *</label>
                 <select formControlName="role">
-                  <option value="0">Admin</option>
-                  <option value="1">Vendedor</option>
-                  <option value="2">Cliente</option>
+                  <option value="Admin">Admin</option>
+                  <option value="Vendedor">Vendedor</option>
+                  <option value="Cliente">Cliente</option>
                 </select>
               </div>
               <div class="modal-footer">
@@ -262,7 +262,7 @@ export class UsuariosComponent implements OnInit {
     nombreCompleto: ['', Validators.required],
     email:    ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(8)]],
-    role:     ['1', Validators.required]
+    role:     ['Vendedor', Validators.required]
   });
 
   ngOnInit(): void { this.cargar(); }
@@ -293,7 +293,7 @@ export class UsuariosComponent implements OnInit {
       email: v.email,
       password: v.password,
       nombreCompleto: v.nombreCompleto,
-      role: parseInt(v.role)
+      role: v.role
     }).subscribe({
       next: () => {
         this.saving.set(false);
@@ -317,7 +317,7 @@ export class UsuariosComponent implements OnInit {
 
   cerrar(): void {
     this.showForm.set(false);
-    this.form.reset({ role: '1' });
+    this.form.reset({ role: 'Vendedor' });
     this.formError.set('');
   }
 }

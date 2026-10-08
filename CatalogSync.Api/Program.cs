@@ -117,7 +117,15 @@ builder.Services.AddRateLimiter(o =>
 });
 
 // ── MVC + OpenAPI ─────────────────────────────────────────────────────────────
-builder.Services.AddControllers();
+// Los enums en JSON se serializan/deserializan por nombre, no por numero.
+// Sin esto, un <select> en Angular con value="0"/"1"/"2" manda un numero
+// que tiene que coincidir a mano con el orden exacto del enum de C# —
+// y si alguno de los dos cambia de orden, el valor que llega es otro rol
+// distinto sin que nadie se de cuenta. Exactamente lo que pasaba con el
+// formulario de "Nuevo usuario": elegir "Vendedor" creaba un Admin.
+builder.Services.AddControllers()
+    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(
+        new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
