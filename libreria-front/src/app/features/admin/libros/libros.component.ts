@@ -106,6 +106,7 @@ import { LibroDto } from '../../../core/models/libro.models';
                     </span>
                   </td>
                   <td class="actions">
+                    <button class="btn-sm" (click)="abrirEdicion(libro)">Editar</button>
                     <button class="btn-sm" (click)="editarPrecio(libro)">Precio</button>
                     <button class="btn-sm" (click)="editarInventario(libro)">Inv.</button>
                     <button class="btn-sm img" (click)="iniciarSubidaPortada(libro)"
@@ -236,12 +237,15 @@ import { LibroDto } from '../../../core/models/libro.models';
       @if (showForm()) {
         <div class="modal-backdrop" (click)="cerrarFormulario()">
           <div class="modal" (click)="$event.stopPropagation()">
-            <h3>Nuevo Libro</h3>
+            <h3>{{ libroEditandoId() ? 'Editar Libro' : 'Nuevo Libro' }}</h3>
             <form [formGroup]="form" (ngSubmit)="guardar()">
               <div class="form-grid">
                 <div class="field">
                   <label>ISBN *</label>
                   <input formControlName="isbn" placeholder="9781234567890" />
+                  @if (libroEditandoId()) {
+                    <small class="field-hint">El ISBN no se puede cambiar una vez creado el libro.</small>
+                  }
                 </div>
                 <div class="field">
                   <label>Código de barra</label>
@@ -547,6 +551,8 @@ import { LibroDto } from '../../../core/models/libro.models';
       transition: border-color .2s;
     }
     .field input:focus { outline: none; border-color: var(--primary); }
+    .field input:disabled { opacity: .5; cursor: not-allowed; }
+    .field-hint { font-size: .72rem; color: var(--muted); opacity: .8; }
 
     /* Modal */
     .modal-backdrop {
@@ -711,6 +717,7 @@ export class LibrosComponent implements OnInit {
   readonly page      = signal(1);
   readonly total     = signal(0);
   readonly totalPages = signal(1);
+  readonly libroEditandoId     = signal<string | null>(null);
   readonly libroEditandoPrecio = signal<LibroDto | null>(null);
   readonly libroEditandoInv    = signal<LibroDto | null>(null);
   readonly seleccionados       = signal<Set<string>>(new Set());
@@ -974,7 +981,32 @@ export class LibrosComponent implements OnInit {
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   abrirFormulario(): void {
+    this.libroEditandoId.set(null);
     this.form.reset({ precioVenta: 0, costo: 0, descuento: 0 });
+    this.form.get('isbn')?.enable();
+    this.formError.set('');
+    this.showForm.set(true);
+  }
+
+  abrirEdicion(libro: LibroDto): void {
+    this.libroEditandoId.set(libro.id);
+    this.form.reset({
+      isbn: libro.isbn,
+      titulo: libro.titulo,
+      autor: libro.autor,
+      editorial: libro.editorial,
+      precioVenta: libro.precioVenta,
+      costo: libro.costo,
+      descuento: libro.descuento,
+      genero: libro.genero ?? '',
+      paginas: libro.paginas ?? null,
+      anioPublicacion: libro.anioPublicacion ?? null,
+      portada: libro.portada ?? '',
+      codigoBarra: libro.codigoBarra ?? ''
+    });
+    // El ISBN es la llave del libro — ActualizarLibroRequest no lo recibe,
+    // así que no tiene sentido dejarlo editable aquí.
+    this.form.get('isbn')?.disable();
     this.formError.set('');
     this.showForm.set(true);
   }
@@ -986,14 +1018,28 @@ export class LibrosComponent implements OnInit {
     this.saving.set(true);
     this.formError.set('');
     const v = this.form.getRawValue();
+    const editandoId = this.libroEditandoId();
 
-    this.svc.crear({
-      isbn: v.isbn, titulo: v.titulo, autor: v.autor, editorial: v.editorial,
-      precioVenta: v.precioVenta, costo: v.costo, descuento: v.descuento,
-      genero: v.genero || undefined, paginas: v.paginas ?? undefined,
-      anioPublicacion: v.anioPublicacion ?? undefined,
-      portada: v.portada || undefined, codigoBarra: v.codigoBarra || undefined
-    }).subscribe({
+    // precioVenta va en el payload de actualizar() porque el DTO del
+    // backend lo exige, pero LibroService.ActualizarAsync lo ignora — el
+    // precio solo cambia por el modal "Precio" (con su propio historial).
+    const obs = editandoId
+      ? this.svc.actualizar(editandoId, {
+          titulo: v.titulo, autor: v.autor, editorial: v.editorial,
+          precioVenta: v.precioVenta, costo: v.costo, descuento: v.descuento,
+          genero: v.genero || undefined, paginas: v.paginas ?? undefined,
+          anioPublicacion: v.anioPublicacion ?? undefined,
+          portada: v.portada || undefined, codigoBarra: v.codigoBarra || undefined
+        })
+      : this.svc.crear({
+          isbn: v.isbn, titulo: v.titulo, autor: v.autor, editorial: v.editorial,
+          precioVenta: v.precioVenta, costo: v.costo, descuento: v.descuento,
+          genero: v.genero || undefined, paginas: v.paginas ?? undefined,
+          anioPublicacion: v.anioPublicacion ?? undefined,
+          portada: v.portada || undefined, codigoBarra: v.codigoBarra || undefined
+        });
+
+    obs.subscribe({
       next: () => {
         this.saving.set(false);
         this.cerrarFormulario();
