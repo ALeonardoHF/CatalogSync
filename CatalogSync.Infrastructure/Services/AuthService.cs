@@ -138,6 +138,7 @@ public class AuthService(LibreriaDbContext db, IConfiguration config, IMemoryCac
         {
             new Claim(JwtRegisteredClaimNames.Sub,   usuario.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, usuario.Email),
+            new Claim(ClaimTypes.Name,               usuario.NombreCompleto),
             new Claim(ClaimTypes.Role,               usuario.Role.ToString()),
             new Claim("tokenVersion",                usuario.TokenVersion.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString())

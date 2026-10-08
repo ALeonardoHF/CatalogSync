@@ -83,10 +83,17 @@ public class AuthController(IAuthService authService) : ControllerBase
     [Authorize]
     public IActionResult Me()
     {
+        // El JWT bearer handler remapea "sub" -> ClaimTypes.NameIdentifier
+        // y "email" -> ClaimTypes.Email al validar el token (mapeo entrante
+        // por defecto de JwtSecurityTokenHandler). Buscar el claim corto
+        // directo siempre devuelve null — el mismo bug que ya se arregló
+        // en Program.cs, repetido aquí.
         return Ok(new
         {
-            id     = User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub),
-            email  = User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Email),
+            id = User.FindFirstValue(ClaimTypes.NameIdentifier)
+              ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub),
+            email = User.FindFirstValue(ClaimTypes.Email)
+                 ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Email),
             role   = User.FindFirstValue(ClaimTypes.Role),
             nombre = User.Identity?.Name
         });

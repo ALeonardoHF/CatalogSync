@@ -20,9 +20,19 @@ public class ArchivoTemporalService : IArchivoTemporalService
 
     public byte[]? Obtener(string id)
     {
+        // No se borra al leerlo: si el usuario hace doble clic en
+        // "descargar" o el navegador reintenta la petición, el segundo
+        // intento debe poder recuperar el mismo archivo. Expira solo por
+        // tiempo (TtlMinutos) o cuando PurgarExpirados lo limpia.
         if (!_archivos.TryGetValue(id, out var entrada)) return null;
-        _archivos.TryRemove(id, out _);
-        return entrada.Expira >= DateTime.UtcNow ? entrada.Datos : null;
+
+        if (entrada.Expira < DateTime.UtcNow)
+        {
+            _archivos.TryRemove(id, out _);
+            return null;
+        }
+
+        return entrada.Datos;
     }
 
     private void PurgarExpirados()

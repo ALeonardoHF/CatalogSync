@@ -298,4 +298,23 @@ public class AuthServiceTests
         // Should not throw when token doesn't exist
         await svc.LogoutAsync("nonexistent-token");
     }
+
+    // ── Contenido del token ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LoginAsync_TokenIncludesNombreCompleto()
+    {
+        // Protege el fix de /api/auth/me: el nombre del usuario debe viajar
+        // en el token para que Me() pueda leerlo via User.Identity.Name.
+        using var db = CreateDb();
+        await SeedUsuario(db);
+        var svc = CreateService(db);
+
+        var result = await svc.LoginAsync(new LoginRequest("test@test.com", TestPassword));
+
+        var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+        var jwt = handler.ReadJwtToken(result.AccessToken);
+
+        Assert.Contains(jwt.Claims, c => c.Value == "Test User");
+    }
 }
