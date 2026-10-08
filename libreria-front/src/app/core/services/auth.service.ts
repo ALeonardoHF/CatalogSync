@@ -1,7 +1,7 @@
 import { inject, Injectable, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { tap } from 'rxjs/operators';
+import { finalize, shareReplay, tap } from 'rxjs/operators';
 import { Observable } from 'rxjs';
 import { API_URL } from '../tokens/api-url.token';
 import { AuthResponse, AuthState, LoginRequest, RegisterRequest, UserRole } from '../models/auth.models';
@@ -15,6 +15,15 @@ export class AuthService {
   private readonly apiUrl = inject(API_URL);
 
   private readonly _state = signal<AuthState | null>(this.loadFromStorage());
+
+  // El refresh token es de un solo uso: el backend lo rota en cada
+  // /api/auth/refresh. Si dos peticiones expiran al mismo tiempo (muy
+  // común, varias llamadas en paralelo en una SPA) y cada una dispara
+  // su propio refresh, la segunda llega con el token ya revocado por
+  // la primera y termina cerrando la sesión aunque la primera sí haya
+  // renovado bien. Esto comparte la misma llamada en curso entre todas
+  // las peticiones que caen en la ventana de expiración.
+  private refreshing$: Observable<AuthResponse> | null = null;
 
   readonly user = computed(() => this._state());
   readonly isLoggedIn = computed(() => this._state() !== null);
@@ -39,10 +48,15 @@ export class AuthService {
   }
 
   refresh(): Observable<AuthResponse> {
+    if (this.refreshing$) return this.refreshing$;
+
     const rt = this._state()?.refreshToken;
-    return this.http.post<AuthResponse>(`${this.apiUrl}/api/auth/refresh`, { refreshToken: rt }).pipe(
-      tap(r => this.setAuth(r))
+    this.refreshing$ = this.http.post<AuthResponse>(`${this.apiUrl}/api/auth/refresh`, { refreshToken: rt }).pipe(
+      tap(r => this.setAuth(r)),
+      finalize(() => this.refreshing$ = null),
+      shareReplay(1)
     );
+    return this.refreshing$;
   }
 
   logout(): void {
