@@ -179,6 +179,7 @@ strong { color: var(--text); font-weight: 500; }
 .stat-card.updated .stat-value { color: var(--accent); }
 .stat-card.new .stat-value     { color: var(--success); }
 .stat-card.invalid .stat-value { color: var(--error); }
+.stat-card.revisar .stat-value { color: #fbbf24; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 
@@ -212,6 +213,10 @@ tr:hover td { color: var(--text); }
 .badge.actualizado { background: #a855f720; color: var(--accent); }
 .badge.nuevo       { background: #4ade8020; color: var(--success); }
 .badge.sincambio   { background: #6b6b8a20; color: var(--muted); }
+.badge.revisar     { background: #fbbf2420; color: #fbbf24; }
+.badge.new         { background: #4ade8020; color: var(--success); }
+.badge.updated     { background: #a855f720; color: var(--accent); }
+.badge.invalid     { background: #f8717120; color: var(--error); }
 
 .table-card {
   background: var(--surface);

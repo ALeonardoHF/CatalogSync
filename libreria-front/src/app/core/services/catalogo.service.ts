@@ -60,12 +60,14 @@ export class CatalogoService {
   importarArchivo(
     archivo: File,
     hoja?: string,
-    proveedor?: string
+    proveedor?: string,
+    estrategia?: EstrategiaPrecio
   ): Observable<ImportarCatalogoResult> {
     const form = new FormData();
     form.append('archivo', archivo);
     if (hoja?.trim())      form.append('hoja', hoja.trim());
     if (proveedor?.trim()) form.append('proveedor', proveedor.trim());
+    if (estrategia)        form.append('estrategia', estrategia);
     return this.http.post<ImportarCatalogoResult>(`${this.apiUrl}/api/catalogo/importar-archivo`, form);
   }
 

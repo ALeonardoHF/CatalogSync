@@ -55,7 +55,7 @@ type Vista = 'comparar' | 'importar';
           <form (ngSubmit)="importarArchivo()">
             <div class="card" style="display:flex; flex-direction:column; gap:12px">
               <strong>{{ dbTieneLibros() ? 'Archivo del proveedor' : 'Archivo a importar' }}</strong>
-              <div style="display:grid; grid-template-columns:1fr 180px 200px; gap:10px; align-items:end">
+              <div style="display:grid; grid-template-columns:1fr 160px 180px 220px; gap:10px; align-items:end">
                 <div class="field">
                   <label>Archivo <span style="color:var(--error)">*</span></label>
                   <input type="file" accept=".xls,.xlsx,.xlsm,.xlsb,.csv"
@@ -70,6 +70,14 @@ type Vista = 'comparar' | 'importar';
                   <label>Nombre proveedor (opcional)</label>
                   <input type="text" placeholder="ej. DISTRIBUIDORA"
                          [(ngModel)]="archivoProveedor" name="archivoProveedor" />
+                </div>
+                <div class="field">
+                  <label>Regla de precio</label>
+                  <select [(ngModel)]="archivoEstrategia" name="archivoEstrategia">
+                    <option value="MasAltoSiHayExistencia">Conservar el más alto si hay existencia</option>
+                    <option value="SiempreElMasAlto">Siempre el precio más alto</option>
+                    <option value="SiempreElNuevo">Siempre el precio nuevo</option>
+                  </select>
                 </div>
               </div>
               <p class="hint">
@@ -91,10 +99,20 @@ type Vista = 'comparar' | 'importar';
               <span class="badge new">{{ archivoResult()!.creados }} creados</span>
               <span class="badge updated">{{ archivoResult()!.preciosActualizados }} actualizados</span>
               <span class="badge">{{ archivoResult()!.sinCambio }} sin cambio</span>
+              @if (archivoResult()!.revisar > 0) {
+                <span class="badge revisar">{{ archivoResult()!.revisar }} para revisar</span>
+              }
               @if (archivoResult()!.errores > 0) {
                 <span class="badge invalid">{{ archivoResult()!.errores }} errores</span>
               }
             </div>
+            @if (archivoResult()!.mensajesRevisar.length > 0) {
+              <ul class="error-list revisar-list">
+                @for (m of archivoResult()!.mensajesRevisar; track $index) {
+                  <li>{{ m }}</li>
+                }
+              </ul>
+            }
             @if (archivoResult()!.mensajesError.length > 0) {
               <ul class="error-list">
                 @for (e of archivoResult()!.mensajesError; track $index) {
@@ -201,6 +219,10 @@ type Vista = 'comparar' | 'importar';
               <div class="stat-value">{{ resumen()!.nuevos | number }}</div>
               <div class="stat-label">Nuevos</div>
             </div>
+            <div class="stat-card revisar">
+              <div class="stat-value">{{ resumen()!.revisar | number }}</div>
+              <div class="stat-label">Para revisar</div>
+            </div>
             <div class="stat-card">
               <div class="stat-value">{{ resumen()!.sinCambio | number }}</div>
               <div class="stat-label">Sin cambio</div>
@@ -230,10 +252,20 @@ type Vista = 'comparar' | 'importar';
               <span class="badge new">{{ importResult()!.creados }} creados</span>
               <span class="badge updated">{{ importResult()!.preciosActualizados }} actualizados</span>
               <span class="badge">{{ importResult()!.sinCambio }} sin cambio</span>
+              @if (importResult()!.revisar > 0) {
+                <span class="badge revisar">{{ importResult()!.revisar }} para revisar</span>
+              }
               @if (importResult()!.errores > 0) {
                 <span class="badge invalid">{{ importResult()!.errores }} errores</span>
               }
             </div>
+            @if (importResult()!.mensajesRevisar.length > 0) {
+              <ul class="error-list revisar-list">
+                @for (m of importResult()!.mensajesRevisar; track $index) {
+                  <li>{{ m }}</li>
+                }
+              </ul>
+            }
           }
 
           <!-- Filtros -->
@@ -244,6 +276,7 @@ type Vista = 'comparar' | 'importar';
               <option value="">Todos</option>
               <option value="Actualizado">Actualizados</option>
               <option value="Nuevo">Nuevos</option>
+              <option value="Revisar">Para revisar</option>
               <option value="SinCambio">Sin cambio</option>
             </select>
             @if (proveedoresDisponibles().length > 1) {
@@ -267,10 +300,11 @@ type Vista = 'comparar' | 'importar';
                   <th>Precio anterior</th>
                   <th>Precio nuevo</th>
                   <th>Resultado</th>
+                  <th>Detalle</th>
                 </tr>
               </thead>
               <tbody>
-                @for (c of cambiosFiltrados(); track c.isbn + c.proveedor) {
+                @for (c of cambiosFiltrados(); track c.isbn + c.proveedor + c.resultado) {
                   <tr>
                     <td>{{ c.isbn }}</td>
                     <td>{{ c.titulo }}</td>
@@ -282,11 +316,12 @@ type Vista = 'comparar' | 'importar';
                         {{ c.resultado === 'SinCambio' ? 'Sin cambio' : c.resultado }}
                       </span>
                     </td>
+                    <td class="text-muted" style="font-size:.82rem">{{ c.detalle || '—' }}</td>
                   </tr>
                 }
                 @if (cambiosFiltrados().length === 0) {
                   <tr>
-                    <td colspan="6" class="text-center text-muted" style="padding:20px">
+                    <td colspan="7" class="text-center text-muted" style="padding:20px">
                       Sin resultados
                     </td>
                   </tr>
@@ -361,6 +396,7 @@ type Vista = 'comparar' | 'importar';
     }
     .error-list { margin: 0; padding-left: 1.25rem; font-size: .85rem; color: var(--error); }
     .error-list li { margin-bottom: .2rem; }
+    .error-list.revisar-list { color: #fbbf24; }
   `]
 })
 export class CatalogoComponent implements OnInit {
@@ -375,6 +411,7 @@ export class CatalogoComponent implements OnInit {
   archivoFile?: File;
   archivoHoja = '';
   archivoProveedor = '';
+  archivoEstrategia: EstrategiaPrecio = 'MasAltoSiHayExistencia';
   cargandoArchivo = signal(false);
   archivoResult = signal<ImportarCatalogoResult | null>(null);
 
@@ -446,7 +483,7 @@ export class CatalogoComponent implements OnInit {
     this.archivoResult.set(null);
 
     this.catalogoService
-      .importarArchivo(this.archivoFile, this.archivoHoja || undefined, this.archivoProveedor || undefined)
+      .importarArchivo(this.archivoFile, this.archivoHoja || undefined, this.archivoProveedor || undefined, this.archivoEstrategia)
       .subscribe({
         next: r => {
           this.archivoResult.set(r);
