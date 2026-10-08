@@ -26,12 +26,18 @@ public class LibroService(LibreriaDbContext db) : ILibroService
 
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var term = q.Trim().ToLower();
+            // Sin .ToLower(): SQL Server ya compara LIKE sin distinguir
+            // mayúsculas con su collation por default (_CI_). Envolver la
+            // columna en LOWER() obliga a evaluarla fila por fila en cada
+            // busqueda sobre ~56,000 libros, y le quita a SQL Server la
+            // posibilidad de usar un indice sobre estas columnas si se
+            // agrega uno mas adelante.
+            var term = q.Trim();
             query = query.Where(l =>
                 l.ISBN.Contains(term) ||
-                l.Titulo.ToLower().Contains(term) ||
-                l.Autor.ToLower().Contains(term) ||
-                l.Editorial.ToLower().Contains(term));
+                l.Titulo.Contains(term) ||
+                l.Autor.Contains(term) ||
+                l.Editorial.Contains(term));
         }
 
         if (soloConExistencia)

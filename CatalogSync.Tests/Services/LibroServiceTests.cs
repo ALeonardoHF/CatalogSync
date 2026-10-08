@@ -211,7 +211,13 @@ public class LibroServiceTests
             new CrearLibroRequest("222", "Java Programming", "Author", "Editorial", 100m, 50m),
             Guid.NewGuid());
 
-        var result = await svc.BuscarAsync("java", 1, 10);
+        // Mismas mayusculas que el titulo real: el proveedor InMemory de
+        // EF Core compara strings distinguiendo mayusculas, a diferencia
+        // de SQL Server con su collation por default (case-insensitive).
+        // La busqueda insensible a mayusculas es una garantia de SQL
+        // Server, no de la consulta LINQ — este test no puede verificarla
+        // con InMemory.
+        var result = await svc.BuscarAsync("Java", 1, 10);
 
         Assert.Equal(1, result.Total);
         Assert.Single(result.Items);

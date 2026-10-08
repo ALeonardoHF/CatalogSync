@@ -99,6 +99,13 @@ builder.Services.AddRateLimiter(o =>
         opt.QueueLimit  = 0;
     });
 
+    o.AddFixedWindowLimiter("publica", opt =>
+    {
+        opt.PermitLimit = 60;
+        opt.Window      = TimeSpan.FromMinutes(1);
+        opt.QueueLimit  = 0;
+    });
+
     o.AddFixedWindowLimiter("bulk", opt =>
     {
         opt.PermitLimit = 5;

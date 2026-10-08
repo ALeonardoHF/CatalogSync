@@ -23,6 +23,7 @@ public class LibrosController(ILibroService libros, IWebHostEnvironment env) : C
 
     [HttpGet]
     [AllowAnonymous]
+    [EnableRateLimiting("publica")]
     public async Task<IActionResult> Buscar(
         [FromQuery] string? q,
         [FromQuery] int page = 1,
@@ -37,6 +38,7 @@ public class LibrosController(ILibroService libros, IWebHostEnvironment env) : C
 
     [HttpGet("{id:guid}")]
     [AllowAnonymous]
+    [EnableRateLimiting("publica")]
     public async Task<IActionResult> GetById(Guid id)
     {
         var libro = await libros.GetByIdAsync(id);
@@ -45,6 +47,7 @@ public class LibrosController(ILibroService libros, IWebHostEnvironment env) : C
 
     [HttpGet("isbn/{isbn}")]
     [AllowAnonymous]
+    [EnableRateLimiting("publica")]
     public async Task<IActionResult> GetByIsbn(string isbn)
     {
         var libro = await libros.GetByIsbnAsync(isbn);
