@@ -90,30 +90,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
+// AddFixedWindowLimiter (el helper simple) NO reparte por cliente: usa el
+// nombre de la politica como clave de particion, asi que todas las
+// peticiones de TODOS los clientes caen en el mismo balde compartido.
+// Con eso, 10 intentos de login de cualquier persona agotan "auth" para
+// todo el sitio durante ese minuto — el control pensado contra fuerza
+// bruta se puede usar al reves, para bloquear el login de todos. Se
+// particiona por IP para que cada cliente tenga su propio balde.
+static string ClientePorIp(HttpContext ctx) =>
+    ctx.Connection.RemoteIpAddress?.ToString() ?? "desconocido";
+
+static Func<HttpContext, RateLimitPartition<string>> LimitePorIp(int permitLimit) => ctx =>
+    RateLimitPartition.GetFixedWindowLimiter(ClientePorIp(ctx), _ => new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = permitLimit,
+        Window      = TimeSpan.FromMinutes(1),
+        QueueLimit  = 0
+    });
+
 builder.Services.AddRateLimiter(o =>
 {
-    o.AddFixedWindowLimiter("auth", opt =>
-    {
-        opt.PermitLimit = 10;
-        opt.Window      = TimeSpan.FromMinutes(1);
-        opt.QueueLimit  = 0;
-    });
-
-    o.AddFixedWindowLimiter("publica", opt =>
-    {
-        opt.PermitLimit = 60;
-        opt.Window      = TimeSpan.FromMinutes(1);
-        opt.QueueLimit  = 0;
-    });
-
-    o.AddFixedWindowLimiter("bulk", opt =>
-    {
-        opt.PermitLimit = 5;
-        opt.Window      = TimeSpan.FromMinutes(1);
-        opt.QueueLimit  = 0;
-    });
-
     o.RejectionStatusCode = 429;
+    o.AddPolicy("auth",    LimitePorIp(10));
+    o.AddPolicy("publica", LimitePorIp(60));
+    o.AddPolicy("bulk",    LimitePorIp(5));
 });
 
 // ── MVC + OpenAPI ─────────────────────────────────────────────────────────────
