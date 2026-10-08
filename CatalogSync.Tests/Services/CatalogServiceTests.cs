@@ -20,14 +20,14 @@ public class CatalogServiceTests
         Existencia = existencia
     };
 
-    private static LibroProveedor BuildProveedor(decimal precio, string nombre = "Libro de prueba", string editorial = "", string sello = "") => new()
+    private static LibroProveedor BuildProveedor(decimal precio, string nombre = "Libro de prueba", string editorial = "", string sello = "", string proveedor = "OCEANO") => new()
     {
         ISBN = "111",
         Nombre = nombre,
         Editorial = editorial,
         Sello = sello,
         PrecioUnitario = precio,
-        Proveedor = "OCEANO"
+        Proveedor = proveedor
     };
 
     // SiempreElMasAlto
@@ -180,6 +180,31 @@ public class CatalogServiceTests
         Assert.Equal(2, resumen.Cambios.Count);
         Assert.Equal("Actualizado", resumen.Cambios[0].Resultado);
         Assert.Equal("Revisar", resumen.Cambios[1].Resultado);
+    }
+
+    // Mismo ISBN en dos proveedores — no debe importar el orden
+
+    [Fact]
+    public void ProcesarCatalogo_SameIsbnFromTwoProveedores_PicksHighestPriceRegardlessOfOrder()
+    {
+        var oceano  = BuildProveedor(200m, proveedor: "OCEANO");
+        var planeta = BuildProveedor(350m, proveedor: "PLANETA");
+
+        var catalogoOrdenA = new List<LibroExistencia> { BuildLibro(100m, "5") };
+        var resumenA = CreateService().ProcesarCatalogo(catalogoOrdenA, [oceano, planeta], EstrategiaPrecio.SiempreElNuevo);
+
+        var catalogoOrdenB = new List<LibroExistencia> { BuildLibro(100m, "5") };
+        var resumenB = CreateService().ProcesarCatalogo(catalogoOrdenB, [planeta, oceano], EstrategiaPrecio.SiempreElNuevo);
+
+        // El resultado no debe depender del orden en que llegaron los archivos.
+        Assert.Equal(350m, catalogoOrdenA[0].Precio);
+        Assert.Equal(350m, catalogoOrdenB[0].Precio);
+
+        // Solo una entrada en el reporte por ISBN, no una por proveedor.
+        Assert.Single(resumenA.Cambios);
+        Assert.Single(resumenB.Cambios);
+        Assert.Equal("PLANETA", resumenA.Cambios[0].Proveedor);
+        Assert.Equal("PLANETA", resumenB.Cambios[0].Proveedor);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using CatalogSync.Application.DTOs.Libros;
+using CatalogSync.Domain.Enums;
 
 namespace CatalogSync.Application.Interfaces;
 
@@ -15,7 +16,7 @@ public interface ILibroService
     Task DesactivarAsync(Guid id);
     Task ActivarAsync(Guid id);
     Task<IReadOnlyList<HistorialPrecioDto>> GetHistorialPreciosAsync(Guid libroId);
-    Task<ImportarCatalogoResult> ImportarCatalogoAsync(IEnumerable<LibroImportItem> items, Guid adminId);
+    Task<ImportarCatalogoResult> ImportarCatalogoAsync(IEnumerable<LibroImportItem> items, Guid adminId, EstrategiaPrecio estrategia = EstrategiaPrecio.MasAltoSiHayExistencia);
     Task<BulkLibrosResult> BulkAccionAsync(List<Guid> ids, string accion);
     Task<BulkLibrosResult> DesactivarAgotadosAsync();
     Task<string> ActualizarPortadaAsync(Guid id, string url);

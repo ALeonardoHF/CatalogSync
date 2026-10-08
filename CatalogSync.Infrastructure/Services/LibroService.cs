@@ -1,6 +1,8 @@
 using CatalogSync.Application.DTOs.Libros;
 using CatalogSync.Application.Interfaces;
 using CatalogSync.Domain.Entities;
+using CatalogSync.Domain.Enums;
+using CatalogSync.Domain.Servicios;
 using CatalogSync.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -178,7 +180,7 @@ public class LibroService(LibreriaDbContext db) : ILibroService
         )).ToList();
     }
 
-    public async Task<ImportarCatalogoResult> ImportarCatalogoAsync(IEnumerable<LibroImportItem> items, Guid adminId)
+    public async Task<ImportarCatalogoResult> ImportarCatalogoAsync(IEnumerable<LibroImportItem> items, Guid adminId, EstrategiaPrecio estrategia = EstrategiaPrecio.MasAltoSiHayExistencia)
     {
         var itemList = items.Where(i => !string.IsNullOrWhiteSpace(i.ISBN)).ToList();
         var isbns    = itemList.Select(i => i.ISBN).ToHashSet();
@@ -188,8 +190,9 @@ public class LibroService(LibreriaDbContext db) : ILibroService
             .Where(l => isbns.Contains(l.ISBN))
             .ToDictionaryAsync(l => l.ISBN);
 
-        int creados = 0, actualizados = 0, sinCambio = 0, errores = 0;
+        int creados = 0, actualizados = 0, sinCambio = 0, errores = 0, revisar = 0;
         var mensajes = new List<string>();
+        var mensajesRevisar = new List<string>();
         var historialesNuevos = new List<HistorialPrecio>();
         var inventariosNuevos = new List<Inventario>();
 
@@ -201,11 +204,21 @@ public class LibroService(LibreriaDbContext db) : ILibroService
                 {
                     bool cambio = false;
 
-                    if (libro.PrecioVenta != item.PrecioVenta)
+                    // El precio se decide contra el estado VIVO de la base
+                    // de datos, no contra lo que diga el Excel — si alguien
+                    // ya ajusto el precio manualmente despues de exportar
+                    // el catalogo, no se pierde por reimportar un archivo
+                    // desactualizado. Misma regla que en CatalogoService,
+                    // para que procesar, importar-bd e importar-archivo
+                    // se comporten igual.
+                    var existenciaActual = libro.Inventario?.Existencia ?? 0;
+                    var precioResuelto = estrategia.ResolverPrecio(libro.PrecioVenta, item.PrecioVenta, existenciaActual);
+
+                    if (precioResuelto != libro.PrecioVenta)
                     {
                         historialesNuevos.Add(HistorialPrecio.Create(
-                            libro.Id, libro.PrecioVenta, item.PrecioVenta, "ImportExcel", adminId));
-                        libro.ActualizarPrecio(item.PrecioVenta);
+                            libro.Id, libro.PrecioVenta, precioResuelto, "ImportExcel", adminId));
+                        libro.ActualizarPrecio(precioResuelto);
                         cambio = true;
                     }
 
@@ -214,6 +227,31 @@ public class LibroService(LibreriaDbContext db) : ILibroService
                     {
                         libro.Inventario.ActualizarExistencia(item.Existencia);
                         cambio = true;
+                    }
+
+                    // Completar metadatos vacios, nunca sobrescribir los
+                    // que ya existen — las diferencias reales se reportan
+                    // para revision manual en vez de aplicarse solas.
+                    var titulo = libro.Titulo;
+                    var autor = libro.Autor;
+                    var editorial = libro.Editorial;
+                    var metadatosCompletados = false;
+                    var diferencias = new List<string>();
+
+                    RevisionDeCampos.Revisar(diferencias, "Título", libro.Titulo, item.Titulo, v => { titulo = v; metadatosCompletados = true; });
+                    RevisionDeCampos.Revisar(diferencias, "Autor", libro.Autor, item.Autor, v => { autor = v; metadatosCompletados = true; });
+                    RevisionDeCampos.Revisar(diferencias, "Editorial", libro.Editorial, item.Editorial, v => { editorial = v; metadatosCompletados = true; });
+
+                    if (metadatosCompletados)
+                    {
+                        libro.ActualizarMetadatos(titulo, autor, editorial, libro.Costo, libro.Descuento);
+                        cambio = true;
+                    }
+
+                    if (diferencias.Count > 0)
+                    {
+                        revisar++;
+                        mensajesRevisar.Add($"ISBN {item.ISBN}: {string.Join("; ", diferencias)}");
                     }
 
                     if (cambio) actualizados++;
@@ -245,7 +283,7 @@ public class LibroService(LibreriaDbContext db) : ILibroService
         db.HistorialPrecios.AddRange(historialesNuevos);
         await db.SaveChangesAsync();
 
-        return new ImportarCatalogoResult(creados, actualizados, sinCambio, errores, mensajes);
+        return new ImportarCatalogoResult(creados, actualizados, sinCambio, errores, mensajes, revisar, mensajesRevisar);
     }
 
     public async Task<BulkLibrosResult> BulkAccionAsync(List<Guid> ids, string accion)

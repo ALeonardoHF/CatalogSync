@@ -5,4 +5,6 @@ public record ImportarCatalogoResult(
     int PreciosActualizados,
     int SinCambio,
     int Errores,
-    IReadOnlyList<string> MensajesError);
+    IReadOnlyList<string> MensajesError,
+    int Revisar = 0,
+    IReadOnlyList<string>? MensajesRevisar = null);

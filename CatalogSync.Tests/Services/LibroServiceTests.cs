@@ -268,4 +268,90 @@ public class LibroServiceTests
         Assert.False(agotadoDb!.IsActive);
         Assert.True(activoDb!.IsActive);
     }
+
+    // ── ImportarCatalogoAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportarCatalogoAsync_WithStock_KeepsHigherPriceEvenIfItemIsLower()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest("111"), Guid.NewGuid());
+        await svc.ActualizarInventarioAsync(libro.Id, new ActualizarInventarioRequest(5));
+
+        var items = new List<LibroImportItem>
+        {
+            new("111", "El libro de prueba", "Autor Prueba", "Editorial Prueba", 100m, 50m, null, 5, 0, false)
+        };
+
+        var result = await svc.ImportarCatalogoAsync(items, Guid.NewGuid());
+
+        var actualizado = await svc.GetByIdAsync(libro.Id);
+        Assert.Equal(250m, actualizado!.PrecioVenta); // se queda el mayor, 250 > 100
+        Assert.Equal(1, result.SinCambio);
+        Assert.Equal(0, result.PreciosActualizados);
+    }
+
+    [Fact]
+    public async Task ImportarCatalogoAsync_WithoutStock_AlwaysTakesItemPriceEvenIfLower()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest("111"), Guid.NewGuid());
+        // Existencia queda en 0 por default al crear.
+
+        var items = new List<LibroImportItem>
+        {
+            new("111", "El libro de prueba", "Autor Prueba", "Editorial Prueba", 100m, 50m, null, 0, 0, false)
+        };
+
+        var result = await svc.ImportarCatalogoAsync(items, Guid.NewGuid());
+
+        var actualizado = await svc.GetByIdAsync(libro.Id);
+        Assert.Equal(100m, actualizado!.PrecioVenta); // sin existencia, siempre toma el nuevo
+        Assert.Equal(1, result.PreciosActualizados);
+    }
+
+    [Fact]
+    public async Task ImportarCatalogoAsync_CompletesEmptyEditorial_WithoutOverwritingExistingTitle()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(
+            new CrearLibroRequest("111", "Mi libro", "Autor Original", "", 250m, 100m),
+            Guid.NewGuid());
+        await svc.ActualizarInventarioAsync(libro.Id, new ActualizarInventarioRequest(5));
+
+        var items = new List<LibroImportItem>
+        {
+            new("111", "Otro título", "Autor Original", "Editorial Nueva", 250m, 100m, null, 5, 0, false)
+        };
+
+        var result = await svc.ImportarCatalogoAsync(items, Guid.NewGuid());
+
+        var actualizado = await svc.GetByIdAsync(libro.Id);
+        Assert.Equal("Mi libro", actualizado!.Titulo);       // no se sobrescribe
+        Assert.Equal("Editorial Nueva", actualizado.Editorial); // estaba vacía, se completa
+        Assert.Equal(1, result.Revisar);
+        Assert.Contains("Título:", result.MensajesRevisar![0]);
+    }
+
+    [Fact]
+    public async Task ImportarCatalogoAsync_CreatesNewBookWhenIsbnNotFound()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+
+        var items = new List<LibroImportItem>
+        {
+            new("999", "Libro nuevo", "Autor", "Editorial", 80m, 40m, null, 3, 0, true)
+        };
+
+        var result = await svc.ImportarCatalogoAsync(items, Guid.NewGuid());
+
+        Assert.Equal(1, result.Creados);
+        var creado = await svc.GetByIsbnAsync("999");
+        Assert.NotNull(creado);
+        Assert.Equal(80m, creado!.PrecioVenta);
+    }
 }

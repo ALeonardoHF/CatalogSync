@@ -133,20 +133,33 @@ public class CatalogoController : ControllerBase
 
         _catalogoService.ProcesarCatalogo(catalogo, librosEntrada, estrategiaPrecio);
 
-        var adminId = GetUserId();
-        var items = catalogo.Select(l => new LibroImportItem(
-            l.ISBN,
-            l.Titulo,
-            l.Autor,
-            l.Editorial,
-            l.Precio,
-            ParseDecimal(l.Costo),
-            string.IsNullOrWhiteSpace(l.CodigoBarra) ? null : l.CodigoBarra,
-            ParseInt(l.Existencia),
-            ParseInt(l.Ventas),
-            l.FilaOriginal == 0));
+        // Solo se persisten los libros que algun proveedor mencionó en
+        // este lote. El catalogo de existencias.xls puede tener decenas
+        // de miles de filas que nadie tocó — reimportarlas todas pisaría
+        // con el valor (quizá desactualizado) del Excel cualquier precio
+        // o existencia que ya se haya ajustado directo en la base desde
+        // la última vez que se exportó ese archivo.
+        var isbnsProveedor = librosEntrada
+            .Where(l => !string.IsNullOrWhiteSpace(l.ISBN))
+            .Select(l => l.ISBN)
+            .ToHashSet();
 
-        var result = await _libroService.ImportarCatalogoAsync(items, adminId);
+        var adminId = GetUserId();
+        var items = catalogo
+            .Where(l => isbnsProveedor.Contains(l.ISBN))
+            .Select(l => new LibroImportItem(
+                l.ISBN,
+                l.Titulo,
+                l.Autor,
+                l.Editorial,
+                l.Precio,
+                ParseDecimal(l.Costo),
+                string.IsNullOrWhiteSpace(l.CodigoBarra) ? null : l.CodigoBarra,
+                ParseInt(l.Existencia),
+                ParseInt(l.Ventas),
+                l.FilaOriginal == 0));
+
+        var result = await _libroService.ImportarCatalogoAsync(items, adminId, estrategiaPrecio);
         return Ok(result);
     }
 
@@ -155,13 +168,18 @@ public class CatalogoController : ControllerBase
     public async Task<ActionResult<ImportarCatalogoResult>> ImportarArchivo(
         IFormFile archivo,
         [FromForm] string? hoja,
-        [FromForm] string? proveedor)
+        [FromForm] string? proveedor,
+        [FromForm] string? estrategia)
     {
         if (archivo is null)
             return BadRequest("El archivo es requerido.");
 
         if (archivo.Length > MaxArchivoBytes)
             return BadRequest($"El archivo supera el límite de {MaxArchivoBytes / 1024 / 1024} MB.");
+
+        var estrategiaPrecio = EstrategiaPrecio.MasAltoSiHayExistencia;
+        if (!string.IsNullOrWhiteSpace(estrategia) && !Enum.TryParse(estrategia, ignoreCase: true, out estrategiaPrecio))
+            return BadRequest($"Estrategia de precio inválida: '{estrategia}'.");
 
         var nombreProveedor = !string.IsNullOrWhiteSpace(proveedor)
             ? proveedor.Trim().ToUpperInvariant()
@@ -186,7 +204,7 @@ public class CatalogoController : ControllerBase
             l.Ventas,
             true));
 
-        var result = await _libroService.ImportarCatalogoAsync(items, adminId);
+        var result = await _libroService.ImportarCatalogoAsync(items, adminId, estrategiaPrecio);
         return Ok(result);
     }
 

@@ -1,6 +1,7 @@
 using CatalogSync.Application.Interfaces;
 using CatalogSync.Application.Models;
 using CatalogSync.Domain.Enums;
+using CatalogSync.Domain.Servicios;
 
 namespace CatalogSync.Infrastructure.Services;
 
@@ -15,14 +16,24 @@ public class CatalogoService : ICatalogoService
             .GroupBy(l => l.ISBN)
             .ToDictionary(g => g.Key, g => g.First());
 
-        foreach (var libro in librosEntrada)
-        {
-            if (string.IsNullOrWhiteSpace(libro.ISBN)) { resumen.IsbnInvalidos++; continue; }
+        resumen.IsbnInvalidos = librosEntrada.Count(l => string.IsNullOrWhiteSpace(l.ISBN));
 
+        // Si el mismo ISBN viene de mas de un proveedor en el mismo lote
+        // (ej. OCEANO y PLANETA cotizan el mismo libro), se toma el que
+        // ofrece el precio mas alto — sin importar el orden en que se
+        // subieron los archivos. Antes ganaba "el ultimo procesado",
+        // que dependia del orden de los entradas en el formulario.
+        var porIsbn = librosEntrada
+            .Where(l => !string.IsNullOrWhiteSpace(l.ISBN))
+            .GroupBy(l => l.ISBN)
+            .Select(g => g.OrderByDescending(l => l.PrecioUnitario).First());
+
+        foreach (var libro in porIsbn)
+        {
             if (catalogoDict.TryGetValue(libro.ISBN, out var existente))
             {
                 var existenciaActual = int.TryParse(existente.Existencia, out var e) ? e : 0;
-                var precioResuelto = ResolverPrecio(estrategia, existente.Precio, libro.PrecioUnitario, existenciaActual);
+                var precioResuelto = estrategia.ResolverPrecio(existente.Precio, libro.PrecioUnitario, existenciaActual);
 
                 if (precioResuelto != existente.Precio)
                 {
@@ -41,9 +52,9 @@ public class CatalogoService : ICatalogoService
                 else resumen.SinCambio++;
 
                 var diferencias = new List<string>();
-                RevisarCampo(diferencias, "Título", existente.Titulo, libro.Nombre, valor => existente.Titulo = valor);
-                RevisarCampo(diferencias, "Editorial", existente.Editorial, libro.Editorial, valor => existente.Editorial = valor);
-                RevisarCampo(diferencias, "Sello", existente.Sello, libro.Sello, valor => existente.Sello = valor);
+                RevisionDeCampos.Revisar(diferencias, "Título", existente.Titulo, libro.Nombre, valor => existente.Titulo = valor);
+                RevisionDeCampos.Revisar(diferencias, "Editorial", existente.Editorial, libro.Editorial, valor => existente.Editorial = valor);
+                RevisionDeCampos.Revisar(diferencias, "Sello", existente.Sello, libro.Sello, valor => existente.Sello = valor);
 
                 if (diferencias.Count > 0)
                 {
@@ -90,33 +101,6 @@ public class CatalogoService : ICatalogoService
         }
 
         return resumen;
-    }
-
-    private static decimal ResolverPrecio(EstrategiaPrecio estrategia, decimal precioActual, decimal precioNuevo, int existenciaActual)
-    {
-        return estrategia switch
-        {
-            EstrategiaPrecio.SiempreElMasAlto => Math.Max(precioActual, precioNuevo),
-            EstrategiaPrecio.SiempreElNuevo => precioNuevo,
-            EstrategiaPrecio.MasAltoSiHayExistencia => existenciaActual > 0
-                ? Math.Max(precioActual, precioNuevo)
-                : precioNuevo,
-            _ => precioNuevo
-        };
-    }
-
-    private static void RevisarCampo(List<string> diferencias, string campo, string actual, string nuevo, Action<string> completar)
-    {
-        if (string.IsNullOrWhiteSpace(nuevo)) return;
-
-        if (string.IsNullOrWhiteSpace(actual))
-        {
-            completar(nuevo);
-            return;
-        }
-
-        if (!string.Equals(actual, nuevo, StringComparison.OrdinalIgnoreCase))
-            diferencias.Add($"{campo}: '{actual}' ≠ '{nuevo}'");
     }
 
     public string NormalizarISBN(string isbn) => isbn.Trim().Trim('*').Trim();

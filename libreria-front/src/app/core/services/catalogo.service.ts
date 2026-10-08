@@ -80,4 +80,6 @@ export interface ImportarCatalogoResult {
   sinCambio: number;
   errores: number;
   mensajesError: string[];
+  revisar: number;
+  mensajesRevisar: string[];
 }
