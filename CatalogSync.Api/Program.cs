@@ -162,6 +162,37 @@ using (var scope = app.Services.CreateScope())
 }
 
 // ── Pipeline ──────────────────────────────────────────────────────────────────
+
+// Manejador global de excepciones — va primero para envolver todo lo
+// demás. Sin esto, cualquier DomainException sin capturar (p.ej. un
+// Libro.Create con título vacío) caía como un 500 sin manejar, y en
+// Development la página de excepción de ASP.NET Core volcaba el stack
+// trace completo Y todos los headers de la petición — incluido el
+// token Bearer del usuario, en texto plano — en el cuerpo de la
+// respuesta. Ahora cualquier excepción se registra con Serilog y se
+// responde con un JSON consistente con el resto de la API, en
+// cualquier ambiente.
+app.Use(async (ctx, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (CatalogSync.Domain.Exceptions.DomainException ex)
+    {
+        ctx.Response.ContentType = "application/json";
+        ctx.Response.StatusCode  = StatusCodes.Status400BadRequest;
+        await ctx.Response.WriteAsJsonAsync(new { message = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Error no controlado procesando {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
+        ctx.Response.ContentType = "application/json";
+        ctx.Response.StatusCode  = StatusCodes.Status500InternalServerError;
+        await ctx.Response.WriteAsJsonAsync(new { message = "Ocurrió un error inesperado." });
+    }
+});
+
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
