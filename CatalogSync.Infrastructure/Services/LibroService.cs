@@ -135,7 +135,12 @@ public class LibroService(LibreriaDbContext db) : ILibroService
         var inventario = await db.Inventarios.FirstOrDefaultAsync(i => i.LibroId == id)
             ?? throw new KeyNotFoundException("Inventario no encontrado.");
 
+        var existenciaAnterior = inventario.Existencia;
         inventario.ActualizarExistencia(request.Existencia);
+
+        if (existenciaAnterior == 0 && request.Existencia > 0)
+            await ResolverPendientesPorRestockAsync([id]);
+
         await db.SaveChangesAsync();
     }
 
@@ -201,6 +206,7 @@ public class LibroService(LibreriaDbContext db) : ILibroService
         var mensajesRevisar = new List<string>();
         var historialesNuevos = new List<HistorialPrecio>();
         var inventariosNuevos = new List<Inventario>();
+        var restockeados = new List<Guid>();
 
         foreach (var item in itemList)
         {
@@ -231,6 +237,9 @@ public class LibroService(LibreriaDbContext db) : ILibroService
                     if (item.Existencia >= 0 && libro.Inventario is not null &&
                         libro.Inventario.Existencia != item.Existencia)
                     {
+                        if (libro.Inventario.Existencia == 0 && item.Existencia > 0)
+                            restockeados.Add(libro.Id);
+
                         libro.Inventario.ActualizarExistencia(item.Existencia);
                         cambio = true;
                     }
@@ -285,11 +294,34 @@ public class LibroService(LibreriaDbContext db) : ILibroService
             }
         }
 
+        if (restockeados.Count > 0)
+            await ResolverPendientesPorRestockAsync(restockeados);
+
         db.Inventarios.AddRange(inventariosNuevos);
         db.HistorialPrecios.AddRange(historialesNuevos);
         await db.SaveChangesAsync();
 
         return new ImportarCatalogoResult(creados, actualizados, sinCambio, errores, mensajes, revisar, mensajesRevisar);
+    }
+
+    /// <summary>
+    /// "Avisarme cuando haya existencia" existía como funcionalidad desde
+    /// el principio (NotificacionSolicitud, MarcarEnviada), pero nada la
+    /// llamaba nunca — una solicitud se creaba como Pendiente y se
+    /// quedaba así para siempre, aunque el libro se reabasteciera. Esto
+    /// resuelve las solicitudes pendientes de los libros que acaban de
+    /// pasar de 0 a existencia positiva.
+    /// </summary>
+    private async Task ResolverPendientesPorRestockAsync(IEnumerable<Guid> libroIds)
+    {
+        var ids = libroIds.Distinct().ToList();
+        if (ids.Count == 0) return;
+
+        var pendientes = await db.NotificacionesSolicitud
+            .Where(n => ids.Contains(n.LibroId) && n.Estado == EstadoNotificacion.Pendiente)
+            .ToListAsync();
+
+        foreach (var n in pendientes) n.MarcarEnviada();
     }
 
     public async Task<BulkLibrosResult> BulkAccionAsync(List<Guid> ids, string accion)

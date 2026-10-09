@@ -1,4 +1,6 @@
 using CatalogSync.Application.DTOs.Libros;
+using CatalogSync.Domain.Entities;
+using CatalogSync.Domain.Enums;
 using CatalogSync.Infrastructure.Services;
 using CatalogSync.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -186,6 +188,43 @@ public class LibroServiceTests
         Assert.Equal(25, result.Existencia);
     }
 
+    [Fact]
+    public async Task ActualizarInventarioAsync_FromZeroToPositive_ResolvesPendingNotifications()
+    {
+        // "Avisarme cuando haya existencia" no servia de nada si nadie
+        // resolvia la solicitud cuando el libro se reabastecia.
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest(), Guid.NewGuid());
+
+        var solicitud = NotificacionSolicitud.Create(Guid.NewGuid(), libro.Id);
+        db.NotificacionesSolicitud.Add(solicitud);
+        await db.SaveChangesAsync();
+
+        await svc.ActualizarInventarioAsync(libro.Id, new ActualizarInventarioRequest(5));
+
+        var actualizada = await db.NotificacionesSolicitud.FindAsync(solicitud.Id);
+        Assert.Equal(EstadoNotificacion.Enviada, actualizada!.Estado);
+    }
+
+    [Fact]
+    public async Task ActualizarInventarioAsync_DoesNotResolveNotificationsForOtherBooks()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libroRestockeado = await svc.CrearAsync(BuildRequest("111"), Guid.NewGuid());
+        var otroLibro = await svc.CrearAsync(BuildRequest("222"), Guid.NewGuid());
+
+        var solicitudOtroLibro = NotificacionSolicitud.Create(Guid.NewGuid(), otroLibro.Id);
+        db.NotificacionesSolicitud.Add(solicitudOtroLibro);
+        await db.SaveChangesAsync();
+
+        await svc.ActualizarInventarioAsync(libroRestockeado.Id, new ActualizarInventarioRequest(5));
+
+        var sinTocar = await db.NotificacionesSolicitud.FindAsync(solicitudOtroLibro.Id);
+        Assert.Equal(EstadoNotificacion.Pendiente, sinTocar!.Estado);
+    }
+
     // ── BuscarAsync ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -340,6 +379,29 @@ public class LibroServiceTests
         Assert.Equal("Editorial Nueva", actualizado.Editorial); // estaba vacía, se completa
         Assert.Equal(1, result.Revisar);
         Assert.Contains("Título:", result.MensajesRevisar![0]);
+    }
+
+    [Fact]
+    public async Task ImportarCatalogoAsync_WhenBookRestocksFromZero_ResolvesPendingNotifications()
+    {
+        using var db = CreateDb();
+        var svc = CreateService(db);
+        var libro = await svc.CrearAsync(BuildRequest("111"), Guid.NewGuid());
+        // Existencia queda en 0 por default al crear.
+
+        var solicitud = NotificacionSolicitud.Create(Guid.NewGuid(), libro.Id);
+        db.NotificacionesSolicitud.Add(solicitud);
+        await db.SaveChangesAsync();
+
+        var items = new List<LibroImportItem>
+        {
+            new("111", "El libro de prueba", "Autor Prueba", "Editorial Prueba", 250m, 100m, null, 5, 0, false)
+        };
+
+        await svc.ImportarCatalogoAsync(items, Guid.NewGuid());
+
+        var actualizada = await db.NotificacionesSolicitud.FindAsync(solicitud.Id);
+        Assert.Equal(EstadoNotificacion.Enviada, actualizada!.Estado);
     }
 
     [Fact]
