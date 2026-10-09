@@ -1,8 +1,8 @@
 using CatalogSync.Application.DTOs.Cliente;
 using CatalogSync.Application.Interfaces;
 using CatalogSync.Domain.Entities;
+using CatalogSync.Infrastructure.Utilidades;
 using CatalogSync.Persistence;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace CatalogSync.Infrastructure.Services;
@@ -44,7 +44,7 @@ public class NotificacionService(LibreriaDbContext db) : INotificacionService
         {
             await db.SaveChangesAsync();
         }
-        catch (DbUpdateException ex) when (EsViolacionDeUnicidad(ex))
+        catch (DbUpdateException ex) when (ex.EsViolacionDeUnicidad())
         {
             // El AnyAsync de arriba no evita una condición de carrera real:
             // dos solicitudes simultáneas pueden pasar esa validación antes
@@ -55,9 +55,6 @@ public class NotificacionService(LibreriaDbContext db) : INotificacionService
 
         return solicitud.Id;
     }
-
-    private static bool EsViolacionDeUnicidad(DbUpdateException ex) =>
-        ex.InnerException is SqlException sql && (sql.Number == 2601 || sql.Number == 2627);
 
     public async Task CancelarAsync(Guid solicitudId, Guid usuarioId)
     {

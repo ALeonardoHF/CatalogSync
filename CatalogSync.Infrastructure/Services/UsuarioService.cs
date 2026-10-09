@@ -3,6 +3,7 @@ using CatalogSync.Application.DTOs.Usuarios;
 using CatalogSync.Application.Interfaces;
 using CatalogSync.Domain.Entities;
 using CatalogSync.Domain.Enums;
+using CatalogSync.Infrastructure.Utilidades;
 using CatalogSync.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,7 +36,15 @@ public class UsuarioService(LibreriaDbContext db) : IUsuarioService
         var hash    = BCrypt.Net.BCrypt.HashPassword(request.Password);
         var usuario = Usuario.Create(email, hash, request.NombreCompleto.Trim(), request.Role);
         db.Usuarios.Add(usuario);
-        await db.SaveChangesAsync();
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.EsViolacionDeUnicidad())
+        {
+            throw new InvalidOperationException("El email ya está registrado.");
+        }
 
         return new UsuarioDto(
             usuario.Id, usuario.Email, usuario.NombreCompleto,

@@ -3,6 +3,7 @@ using CatalogSync.Application.Interfaces;
 using CatalogSync.Domain.Entities;
 using CatalogSync.Domain.Enums;
 using CatalogSync.Domain.Servicios;
+using CatalogSync.Infrastructure.Utilidades;
 using CatalogSync.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -91,7 +92,15 @@ public class LibroService(LibreriaDbContext db) : ILibroService
         var inventario = Inventario.Create(libro.Id, 0);
         db.Libros.Add(libro);
         db.Inventarios.Add(inventario);
-        await db.SaveChangesAsync();
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.EsViolacionDeUnicidad())
+        {
+            throw new InvalidOperationException($"Ya existe un libro con ISBN {request.ISBN}.");
+        }
 
         return ToDto(libro, inventario);
     }

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using CatalogSync.Infrastructure.Extensions;
+using CatalogSync.Infrastructure.Utilidades;
 using CatalogSync.Persistence;
 using CatalogSync.Persistence.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -191,6 +192,17 @@ app.Use(async (ctx, next) =>
         ctx.Response.ContentType = "application/json";
         ctx.Response.StatusCode  = StatusCodes.Status400BadRequest;
         await ctx.Response.WriteAsJsonAsync(new { message = ex.Message });
+    }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.EsViolacionDeUnicidad())
+    {
+        // Red de seguridad para cualquier "verificar y luego insertar" que
+        // no tenga su propio catch con un mensaje especifico (Favoritos,
+        // registro, alta de libro y notificaciones ya lo tienen). Sin
+        // esto, la condicion de carrera real de ese patron caia como un
+        // 500 generico en vez de un 409 claro.
+        ctx.Response.ContentType = "application/json";
+        ctx.Response.StatusCode  = StatusCodes.Status409Conflict;
+        await ctx.Response.WriteAsJsonAsync(new { message = "El registro ya existe o entra en conflicto con otro." });
     }
     catch (Exception ex)
     {

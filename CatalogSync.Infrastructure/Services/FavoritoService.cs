@@ -1,6 +1,7 @@
 using CatalogSync.Application.DTOs.Cliente;
 using CatalogSync.Application.Interfaces;
 using CatalogSync.Domain.Entities;
+using CatalogSync.Infrastructure.Utilidades;
 using CatalogSync.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,7 +36,18 @@ public class FavoritoService(LibreriaDbContext db) : IFavoritoService
 
         var favorito = Favorito.Create(usuarioId, libroId);
         db.Favoritos.Add(favorito);
-        await db.SaveChangesAsync();
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.EsViolacionDeUnicidad())
+        {
+            // Mismo caso que en NotificacionService: el AnyAsync de arriba
+            // no evita que dos "agregar a favoritos" simultaneos pasen la
+            // validacion antes de que ninguno se haya guardado todavia.
+            throw new InvalidOperationException("Ya está en favoritos.");
+        }
 
         return favorito.Id;
     }

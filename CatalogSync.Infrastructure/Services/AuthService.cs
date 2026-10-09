@@ -6,6 +6,7 @@ using CatalogSync.Application.DTOs.Auth;
 using CatalogSync.Application.Interfaces;
 using CatalogSync.Domain.Entities;
 using CatalogSync.Domain.Enums;
+using CatalogSync.Infrastructure.Utilidades;
 using CatalogSync.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -27,7 +28,18 @@ public class AuthService(LibreriaDbContext db, IConfiguration config, IMemoryCac
         var usuario = Usuario.Create(email, hash, request.NombreCompleto, Role.Cliente);
 
         db.Usuarios.Add(usuario);
-        await db.SaveChangesAsync();
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.EsViolacionDeUnicidad())
+        {
+            // El AnyAsync de arriba no evita que dos registros simultaneos
+            // con el mismo email pasen la validacion antes de que ninguno
+            // se haya guardado todavia.
+            throw new InvalidOperationException("El email ya está registrado.");
+        }
 
         return await GenerarTokensAsync(usuario);
     }
