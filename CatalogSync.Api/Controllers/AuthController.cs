@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CatalogSync.Api.Extensions;
 using CatalogSync.Application.DTOs.Auth;
 using CatalogSync.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -69,10 +70,8 @@ public class AuthController(IAuthService authService) : ControllerBase
     [Authorize]
     public async Task<IActionResult> LogoutAll()
     {
-        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
-
-        if (!Guid.TryParse(userIdStr, out var userId))
+        var userId = User.GetUserId();
+        if (userId == Guid.Empty)
             return Unauthorized();
 
         await authService.LogoutAllAsync(userId);

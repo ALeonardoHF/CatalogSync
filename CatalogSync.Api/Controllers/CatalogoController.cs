@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using CatalogSync.Api.Extensions;
 using CatalogSync.Application.Models;
 using CatalogSync.Application.DTOs.Libros;
 using CatalogSync.Application.Interfaces;
@@ -144,7 +144,7 @@ public class CatalogoController : ControllerBase
             .Select(l => l.ISBN)
             .ToHashSet();
 
-        var adminId = GetUserId();
+        var adminId = User.GetUserId();
         var items = catalogo
             .Where(l => isbnsProveedor.Contains(l.ISBN))
             .Select(l => new LibroImportItem(
@@ -191,7 +191,7 @@ public class CatalogoController : ControllerBase
         if (libros.Count == 0)
             return BadRequest("No se encontraron registros válidos. Asegúrate de que el archivo tenga columnas ISBN y PRECIO.");
 
-        var adminId = GetUserId();
+        var adminId = User.GetUserId();
         var items = libros.Select(l => new LibroImportItem(
             l.ISBN,
             string.IsNullOrWhiteSpace(l.Nombre) ? l.ISBN : l.Nombre,
@@ -221,13 +221,6 @@ public class CatalogoController : ControllerBase
         return File(contenido,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "existencias_actualizado.xlsx");
-    }
-
-    private Guid GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-               ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
-        return Guid.TryParse(sub, out var id) ? id : Guid.Empty;
     }
 
     private static decimal ParseDecimal(string s) =>

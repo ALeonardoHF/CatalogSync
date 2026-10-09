@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using CatalogSync.Api.Extensions;
 using CatalogSync.Application.DTOs.Auth;
 using CatalogSync.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -43,8 +43,7 @@ public class UsuariosController(IUsuarioService usuarios) : ControllerBase
     [HttpPatch("{id:guid}/desactivar")]
     public async Task<IActionResult> Desactivar(Guid id)
     {
-        var myId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)!);
+        var myId = User.GetUserId();
 
         try
         {

@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using CatalogSync.Api.Extensions;
 using CatalogSync.Application.DTOs.Libros;
 using CatalogSync.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -60,7 +60,7 @@ public class LibrosController(ILibroService libros, IWebHostEnvironment env) : C
     {
         try
         {
-            var adminId = GetUserId();
+            var adminId = User.GetUserId();
             var libro = await libros.CrearAsync(request, adminId);
             return CreatedAtAction(nameof(GetById), new { id = libro.Id }, libro);
         }
@@ -91,7 +91,7 @@ public class LibrosController(ILibroService libros, IWebHostEnvironment env) : C
     {
         try
         {
-            await libros.ActualizarPrecioAsync(id, request, GetUserId());
+            await libros.ActualizarPrecioAsync(id, request, User.GetUserId());
             return NoContent();
         }
         catch (KeyNotFoundException ex)
@@ -289,12 +289,5 @@ public class LibrosController(ILibroService libros, IWebHostEnvironment env) : C
         using var stream = archivo.OpenReadStream();
         var leidos = await stream.ReadAsync(buffer);
         return leidos == magic.Length && buffer.SequenceEqual(magic);
-    }
-
-    private Guid GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-               ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
-        return Guid.Parse(sub!);
     }
 }
