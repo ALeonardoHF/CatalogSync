@@ -900,7 +900,8 @@ export class LibrosComponent implements OnInit {
   // ── Portadas masivas ──────────────────────────────────────────────────────
 
   onBulkPortadaChange(event: Event): void {
-    const files = Array.from((event.target as HTMLInputElement).files ?? []);
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
     const current = this.bulkPreview();
     const nuevos = files
       .filter(f => !current.some(p => p.nombre === f.name))
@@ -911,6 +912,11 @@ export class LibrosComponent implements OnInit {
         file: f
       }));
     this.bulkPreview.update(prev => [...prev, ...nuevos]);
+
+    // Sin esto, volver a seleccionar exactamente el mismo archivo (p.ej.
+    // despues de quitarlo de la vista previa) no dispara 'change' —
+    // el navegador considera que el value del input no cambio.
+    input.value = '';
   }
 
   quitarDePreview(nombre: string): void {
